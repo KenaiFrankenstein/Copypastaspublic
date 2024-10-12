@@ -211,7 +211,7 @@ function default_settings() {
   echo -e "${DGN}Using WAN MAC Address: ${BGN}${MAC}${CL}"
   echo -e "${DGN}Using LAN MAC Address: ${BGN}${LAN_MAC}${CL}"
   echo -e "${DGN}Using LAN Bridge: ${BGN}${LAN_BRG}${CL}"
-  echo -e "${DGN}Using LAN VLAN: ${BGN}999${CL}"
+  echo -e "${DGN}Using LAN VLAN: ${BGN}nope${CL}"
   echo -e "${DGN}Using LAN IP Address: ${BGN}${LAN_IP_ADDR}${CL}"
   echo -e "${DGN}Using LAN NETMASK: ${BGN}${LAN_NETMASK}${CL}"
   echo -e "${DGN}Using Interface MTU Size: ${BGN}Default${CL}"
