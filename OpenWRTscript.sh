@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+#bash -c "$(wget -qLO - https://github.com/KenaiFrankenstein/Copypastaspublic/raw/main/OpenWRTscript.sh)"
 function header_info {
   clear
   cat <<"EOF"
