@@ -1,5 +1,15 @@
-#!/usr/bin/env bash
 #bash -c "$(wget -qLO - https://github.com/KenaiFrankenstein/Copypastaspublic/raw/main/OpenWRTscript.sh)"
+#!/usr/bin/env bash
+
+# Copyright (c) 2021-2025 tteck
+# Author: tteck (tteckster)
+#         Jon Spriggs (jontheniceguy)
+# License: MIT
+# https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
+# Based on work from https://i12bretro.github.io/tutorials/0405.html
+
+source /dev/stdin <<< $(wget -qLO - https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/api.func)
+
 function header_info {
   clear
   cat <<"EOF"
@@ -14,6 +24,14 @@ EOF
 }
 header_info
 echo -e "Loading..."
+#API VARIABLES
+RANDOM_UUID="$(cat /proc/sys/kernel/random/uuid)"
+METHOD=""
+NSAPP="openwrt-vm"
+var_os="openwrt"
+var_version=" "
+DISK_SIZE="0.5G"
+#
 GEN_MAC=02:$(openssl rand -hex 5 | awk '{print toupper($0)}' | sed 's/\(..\)/\1:/g; s/.$//')
 GEN_MAC_LAN=02:$(openssl rand -hex 5 | awk '{print toupper($0)}' | sed 's/\(..\)/\1:/g; s/.$//')
 NEXTID=$(pvesh get /cluster/nextid)
@@ -32,10 +50,13 @@ CROSS="${RD}✗${CL}"
 set -Eeo pipefail
 trap 'error_handler $LINENO "$BASH_COMMAND"' ERR
 trap cleanup EXIT
+trap 'post_update_to_api "failed" "INTERRUPTED"' SIGINT 
+trap 'post_update_to_api "failed" "TERMINATED"' SIGTERM
 function error_handler() {
   local exit_code="$?"
   local line_number="$1"
   local command="$2"
+  post_update_to_api "failed" "$command"
   local error_message="${RD}[ERROR]${CL} in line ${RD}$line_number${CL}: exit code ${RD}$exit_code${CL}: while executing command ${YW}$command${CL}"
   echo -e "\n$error_message\n"
   cleanup_vmid
@@ -150,7 +171,7 @@ function msg_error() {
 }
 
 function pve_check() {
-  if ! pveversion | grep -Eq "pve-manager/8.[1-3]"; then
+  if ! pveversion | grep -Eq "pve-manager/8\.[1-3](\.[0-9]+)*"; then
     msg_error "This version of Proxmox Virtual Environment is not supported"
     echo -e "Requires Proxmox Virtual Environment Version 8.1 or later."
     echo -e "Exiting..."
@@ -192,16 +213,17 @@ function default_settings() {
   HN=openwrt
   CORE_COUNT="1"
   RAM_SIZE="256"
-  BRG="vmbr2"
+  BRG="vmbr1"
   VLAN=""
   MAC=$GEN_MAC
   LAN_MAC=$GEN_MAC_LAN
-  LAN_BRG="vmbr1"
+  LAN_BRG="vmbr2"
   LAN_IP_ADDR="192.168.7.200"
   LAN_NETMASK="255.255.255.0"
   LAN_VLAN=""
   MTU=""
   START_VM="yes"
+  METHOD="default"
   echo -e "${DGN}Using Virtual Machine ID: ${BGN}${VMID}${CL}"
   echo -e "${DGN}Using Hostname: ${BGN}${HN}${CL}"
   echo -e "${DGN}Allocated Cores: ${BGN}${CORE_COUNT}${CL}"
@@ -211,7 +233,7 @@ function default_settings() {
   echo -e "${DGN}Using WAN MAC Address: ${BGN}${MAC}${CL}"
   echo -e "${DGN}Using LAN MAC Address: ${BGN}${LAN_MAC}${CL}"
   echo -e "${DGN}Using LAN Bridge: ${BGN}${LAN_BRG}${CL}"
-  echo -e "${DGN}Using LAN VLAN: ${BGN}nope${CL}"
+  echo -e "${DGN}Using LAN VLAN: ${BGN}999${CL}"
   echo -e "${DGN}Using LAN IP Address: ${BGN}${LAN_IP_ADDR}${CL}"
   echo -e "${DGN}Using LAN NETMASK: ${BGN}${LAN_NETMASK}${CL}"
   echo -e "${DGN}Using Interface MTU Size: ${BGN}Default${CL}"
@@ -220,6 +242,7 @@ function default_settings() {
 }
 
 function advanced_settings() {
+  METHOD="advanced"
   while true; do
     if VMID=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Set Virtual Machine ID" 8 58 $NEXTID --title "VIRTUAL MACHINE ID" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
       if [ -z "$VMID" ]; then
@@ -392,6 +415,7 @@ arch_check
 pve_check
 ssh_check
 start_script
+post_to_api_vm
 
 msg_info "Validating Storage"
 while read -r line; do
@@ -425,7 +449,7 @@ msg_ok "Virtual Machine ID is ${CL}${BL}$VMID${CL}."
 msg_info "Getting URL for OpenWrt Disk Image"
 
 response=$(curl -s https://openwrt.org)
-stableversion=$(echo "$response" | sed -n 's/.*Current stable release - OpenWrt \([0-9.]\+\).*/\1/p')
+stableversion=$(echo "$response" | sed -n 's/.*Current stable release - OpenWrt \([0-9.]\+\).*/\1/p' | head -n 1)
 URL="https://downloads.openwrt.org/releases/$stableversion/targets/x86/64/openwrt-$stableversion-x86-64-generic-ext4-combined.img.gz"
 
 sleep 2
@@ -468,8 +492,8 @@ qm set $VMID \
   -efidisk0 ${DISK0_REF},efitype=4m,size=4M \
   -scsi0 ${DISK1_REF},size=512M \
   -boot order=scsi0 \
-  -tags proxmox-helper-scripts \
-  -description "<div align='center'><a href='https://Helper-Scripts.com'><img src='https://raw.githubusercontent.com/tteck/Proxmox/main/misc/images/logo-81x112.png'/></a>
+  -tags community-script \
+  -description "<div align='center'><a href='https://Helper-Scripts.com'><img src='https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/images/logo-81x112.png'/></a>
 
   # OpenWRT
 
@@ -491,8 +515,6 @@ send_line_to_vm "uci set network.lan.device=eth0"
 send_line_to_vm "uci set network.lan.proto=static"
 send_line_to_vm "uci set network.lan.ipaddr=${LAN_IP_ADDR}"
 send_line_to_vm "uci set network.lan.netmask=${LAN_NETMASK}"
-send_line_to_vm "uci set firewall.@zone[1].input='ACCEPT'"
-send_line_to_vm "uci set firewall.@zone[1].forward='ACCEPT'"
 send_line_to_vm "uci commit"
 send_line_to_vm "halt"
 msg_ok "Network interfaces have been successfully configured."
@@ -513,4 +535,5 @@ VLAN_FINISH=""
 if [ "$VLAN" == "" ] && [ "$VLAN2" != "999" ]; then
   VLAN_FINISH=" Please remember to adjust the VLAN tags to suit your network."
 fi
+post_update_to_api "done" "none"
 msg_ok "Completed Successfully!\n${VLAN_FINISH}"
